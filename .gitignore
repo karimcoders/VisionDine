@@ -52,3 +52,16 @@ prompt
 server.log
 # Skills directory
 /skills/
+# VisionDine repo hygiene — sandbox & runtime artifacts
+db/*.db
+db/*.db-journal
+worklog.md
+.zscripts
+download
+tests
+examples
+mini-services
+Caddyfile
+scripts/patch1.py
+scripts/debug.ts
+agent-ctx
