@@ -1,0 +1,238 @@
+// VisionDine — Restaurant POS Platform
+// All monetary values stored as INTEGER PAISE to avoid float drift.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Staff {
+  id        String   @id @default(cuid())
+  name      String
+  role      String // OWNER | MANAGER | CASHIER | WAITER | KITCHEN | INVENTORY
+  pin       String // 4-digit access code
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  orders    Order[]  @relation("OrderStaff")
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  station   String     @default("MAIN") // MAIN | TANDOOR | BEVERAGE | DESSERT
+  sortOrder Int        @default(0)
+  active    Boolean    @default(true)
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id           String       @id @default(cuid())
+  name         String
+  description  String?
+  pricePaise   Int
+  categoryId   String
+  category     Category     @relation(fields: [categoryId], references: [id])
+  diet         String       @default("VEG") // VEG | NONVEG | EGG | VEGAN
+  station      String       @default("MAIN")
+  allergens    String? // comma separated
+  prepMinutes  Int          @default(12)
+  available    Boolean      @default(true)
+  soldOut      Boolean      @default(false)
+  scheduleNote String?
+  sortOrder    Int          @default(0)
+  variants     Variant[]
+  addons       Addon[]
+  recipeLines  RecipeLine[]
+  orderItems   OrderItem[]
+  createdAt    DateTime     @default(now())
+}
+
+model Variant {
+  id              String   @id @default(cuid())
+  menuItemId      String
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id])
+  name            String
+  priceDeltaPaise Int      @default(0)
+  available       Boolean  @default(true)
+}
+
+model Addon {
+  id         String   @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  name       String
+  pricePaise Int      @default(0)
+  available  Boolean  @default(true)
+}
+
+model Table {
+  id           String        @id @default(cuid())
+  number       Int           @unique
+  seats        Int           @default(4)
+  zone         String        @default("Indoor")
+  status       String        @default("AVAILABLE") // AVAILABLE | OCCUPIED | RESERVED | INACTIVE
+  guestCount   Int?
+  openedAt     DateTime?
+  orders       Order[]
+  reservations Reservation[]
+}
+
+model Reservation {
+  id         String    @id @default(cuid())
+  tableId    String
+  table      Table     @relation(fields: [tableId], references: [id])
+  guestName  String
+  phone      String?
+  guestCount Int       @default(2)
+  at         DateTime
+  status     String    @default("CONFIRMED") // CONFIRMED | SEATED | CANCELLED
+  note       String?
+  createdAt  DateTime  @default(now())
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  orderNo        String      @unique
+  type           String // DINE_IN | TAKEAWAY | DELIVERY | QR
+  tableId        String?
+  table          Table?      @relation(fields: [tableId], references: [id])
+  status         String      @default("OPEN") // OPEN | PREPARING | READY | SERVED | COMPLETED | CANCELLED
+  subtotalPaise  Int
+  discountPaise  Int         @default(0)
+  discountReason String?
+  couponCode     String?
+  servicePaise   Int         @default(0)
+  taxPaise       Int         @default(0)
+  totalPaise     Int
+  paymentStatus  String      @default("UNPAID") // UNPAID | PAID | REFUNDED
+  customerName   String?
+  customerPhone  String?
+  guestCount     Int?
+  staffId        String?
+  staff          Staff?      @relation("OrderStaff", fields: [staffId], references: [id])
+  createdVia     String      @default("POS") // POS | QR
+  billRequested  Boolean     @default(false)
+  assistRequested Boolean    @default(false)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  completedAt    DateTime?
+  items          OrderItem[]
+  payments       Payment[]
+  refunds        Refund[]
+}
+
+model OrderItem {
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id])
+  menuItemId    String?
+  menuItem      MenuItem? @relation(fields: [menuItemId], references: [id])
+  name          String // snapshot
+  unitPricePaise Int // snapshot incl. variant delta
+  qty           Int       @default(1)
+  variantName   String?
+  addonsJson    String? // [{name,pricePaise}]
+  notes         String?
+  station       String    @default("MAIN")
+  status        String    @default("QUEUED") // QUEUED | PREPARING | READY | SERVED
+  createdAt     DateTime  @default(now())
+  readyAt       DateTime?
+  servedAt      DateTime?
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id])
+  method         String // CASH | UPI | CARD | SPLIT
+  amountPaise    Int
+  reference      String?
+  status         String   @default("SUCCESS") // SUCCESS | FAILED
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+}
+
+model Refund {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  amountPaise Int
+  reason      String
+  staffName   String
+  createdAt   DateTime @default(now())
+}
+
+model Ingredient {
+  id               String          @id @default(cuid())
+  name             String
+  unit             String // KG | G | L | ML | PCS
+  qty              Float
+  minQty           Float           @default(0)
+  costPerUnitPaise Int             @default(0)
+  supplier         String?
+  location         String?
+  expiresAt        DateTime?
+  active           Boolean         @default(true)
+  recipeLines      RecipeLine[]
+  movements        StockMovement[]
+}
+
+model RecipeLine {
+  id            String     @id @default(cuid())
+  menuItemId    String
+  menuItem      MenuItem   @relation(fields: [menuItemId], references: [id])
+  ingredientId  String
+  ingredient    Ingredient @relation(fields: [ingredientId], references: [id])
+  qtyPerServing Float
+}
+
+model StockMovement {
+  id           String     @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  type         String // PURCHASE | WASTAGE | ADJUSTMENT | SALE
+  qtyDelta     Float
+  reason       String?
+  orderRef     String?
+  staffName    String?
+  createdAt    DateTime   @default(now())
+}
+
+model Customer {
+  id               String   @id @default(cuid())
+  name             String
+  phone            String   @unique
+  loyaltyPoints    Int      @default(0)
+  visits           Int      @default(0)
+  totalSpentPaise  Int      @default(0)
+  prefs            String?
+  createdAt        DateTime @default(now())
+}
+
+model Coupon {
+  id            String  @id @default(cuid())
+  code          String  @unique
+  kind          String // PERCENT | FLAT
+  value         Int // percent, or paise when FLAT
+  minOrderPaise Int     @default(0)
+  active        Boolean @default(true)
+  usageCount    Int     @default(0)
+}
+
+model Setting {
+  key   String @id
+  value String // JSON
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  staffName String
+  role      String
+  action    String
+  detail    String
+  createdAt DateTime @default(now())
+}
